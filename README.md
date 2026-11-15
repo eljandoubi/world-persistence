@@ -228,6 +228,8 @@ OUT=/tmp/study/results CKPT=/tmp/study/ckpt bash scripts/run_all.sh
 python scripts/report.py --out /tmp/study/results
 ```
 
+If the network cannot download the build backend, install with `python -m pip install -e . --no-build-isolation` (setuptools 77 or newer must already be installed).
+
 Data are generated from fixed seeds, nothing is downloaded. The trained-model numbers above come from one Colab T4 session (Python 3.13.16, torch 2.14.1) that ran before three changes: the starting noise of D is now drawn per episode and rollout step, the reappearing colour is now also scored on the events that have a control, and the int8 against fp32 comparison now shares batches and noise (`results/baseline.json` was scored again with the second change, on the CPU). The code in this repo therefore draws other samples for D than the committed D runs did, and a full run rewrites `results/`.
 
 ## Method notes
