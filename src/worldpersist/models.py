@@ -114,14 +114,17 @@ class Flow(nn.Module):
 
     @torch.no_grad()
     def predict(self, hist, action, generator=None):
-        hist = hist * 2 - 1
-        x = torch.randn(
-            len(hist), 3, SIZE, SIZE, generator=generator, device=hist.device
-        )
-        for i in range(self.steps):
-            t = torch.full((len(x),), i / self.steps, device=x.device)
-            x = x + self.velocity(x, t, hist, action) / self.steps
-        return ((x + 1) / 2).clamp(0, 1)
+        return euler_sample(self.velocity, hist, action, self.steps, generator)
+
+
+def euler_sample(velocity, hist, action, steps, generator=None):
+    """Integrate a velocity field from noise to a frame in [0, 1] with Euler steps."""
+    hist = hist * 2 - 1
+    x = torch.randn(len(hist), 3, SIZE, SIZE, generator=generator, device=hist.device)
+    for i in range(steps):
+        t = torch.full((len(x),), i / steps, device=x.device)
+        x = x + velocity(x, t, hist, action) / steps
+    return ((x + 1) / 2).clamp(0, 1)
 
 
 def flow_target(x1, noise, t):

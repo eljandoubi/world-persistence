@@ -144,24 +144,23 @@ def rollout(model, frames, actions, generator=None):
 
 
 @torch.no_grad()
-def predict_episodes(model, episodes, device, batch=250, seed=0):
+def predict_episodes(model, episodes, device, batch=250, seed=0, amp=True):
     """Roll the model out on every episode and return the frames on the CPU."""
-    cuda = device.type == "cuda"
+    half = amp and device.type == "cuda"
     gen = torch.Generator(device=device).manual_seed(seed) if model.flow else None
     out = []
     for i in range(0, len(episodes.frames), batch):
         frames = torch.as_tensor(episodes.frames[i : i + batch]).to(device)
         actions = torch.as_tensor(episodes.actions[i : i + batch]).to(device)
-        with torch.autocast(device.type, dtype=torch.float16, enabled=cuda):
+        with torch.autocast(device.type, dtype=torch.float16, enabled=half):
             out.append(rollout(model, frames, actions, gen).float().cpu())
     return torch.cat(out)
 
 
-def evaluate_model(model, episodes, device, batch=250, seed=0):
+def evaluate_model(model, episodes, device, batch=250, seed=0, amp=True):
     """Persistence metrics of a model rolled out on a set of episodes."""
-    return metrics.evaluate(
-        predict_episodes(model, episodes, device, batch, seed), episodes
-    )
+    frames = predict_episodes(model, episodes, device, batch, seed, amp)
+    return metrics.evaluate(frames, episodes)
 
 
 def save_model(model, kind, path, base=32):
