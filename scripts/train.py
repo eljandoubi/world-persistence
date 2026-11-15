@@ -36,6 +36,25 @@ def run(kind, name, lam, seed, args, train_set, scored, device):
     }
 
 
+def is_done(path, weights, kind, lam, seed, args):
+    """True when the run's result and weights both exist and the result matches args."""
+    if not (path.exists() and weights.exists()):
+        return False
+    run = json.loads(path.read_text())
+    wanted = {
+        "steps": args.steps,
+        "batch": args.batch,
+        "lr": args.lr,
+        "lam": lam,
+        "base": args.base,
+    }
+    return (
+        run["model"] == kind
+        and run["seed"] == seed
+        and all(run["train"].get(key) == value for key, value in wanted.items())
+    )
+
+
 def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--models", nargs="+", default=["a", "b", "c", "d", "e"])
@@ -65,7 +84,8 @@ def main():
             for lam in args.lams if kind == "e" else [0.0]:
                 name = args.name or (f"e_lam{lam:g}" if kind == "e" else kind)
                 path = runs / f"{name}_s{seed}.json"
-                if path.exists():
+                weights = pathlib.Path(args.ckpt) / f"{name}_s{seed}.pt"
+                if is_done(path, weights, kind, lam, seed, args):
                     print("skip", path, flush=True)
                     continue
                 result = run(kind, name, lam, seed, args, train_set, scored, device)

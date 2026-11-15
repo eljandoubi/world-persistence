@@ -126,6 +126,7 @@ def train(
         "batch": batch,
         "lr": lr,
         "lam": lam,
+        "base": base,
         "params": count_params(model),
         "seconds": round(time.time() - start, 1),
         "loss": curve,

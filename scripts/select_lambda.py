@@ -26,6 +26,9 @@ def main():
             "val_mse_16": val["mse"]["16"],
         }
     chosen = min(candidates, key=lambda lam: candidates[lam]["val_drift_abs"])
+    weights = ckpt / f"e_lam{chosen:g}_s0.pt"
+    if not weights.exists():
+        raise SystemExit(f"missing weights {weights}: train model e first")
     summary = {
         "criterion": "mean absolute mass drift on validation at horizons 4, 8 and 16",
         "candidates": {f"{lam:g}": row for lam, row in sorted(candidates.items())},
@@ -36,7 +39,7 @@ def main():
     run = json.loads((out / "runs" / f"e_lam{chosen:g}_s0.json").read_text())
     run["name"] = "e"
     (out / "runs" / "e_s0.json").write_text(json.dumps(run, indent=1))
-    shutil.copy(ckpt / f"e_lam{chosen:g}_s0.pt", ckpt / "e_s0.pt")
+    shutil.copy(weights, ckpt / "e_s0.pt")
     print("chosen lambda", chosen)
 
 
