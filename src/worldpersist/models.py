@@ -90,7 +90,7 @@ class Regressor(nn.Module):
         return hist[:, -1] + self.net(hist.flatten(1, 2), emb)
 
     @torch.no_grad()
-    def predict(self, hist, action, generator=None):
+    def predict(self, hist, action, generator=None, noise=None):
         return self(hist, action).clamp(0, 1)
 
 
@@ -113,14 +113,21 @@ class Flow(nn.Module):
         return self.net(torch.cat([x, hist], dim=1), emb)
 
     @torch.no_grad()
-    def predict(self, hist, action, generator=None):
-        return euler_sample(self.velocity, hist, action, self.steps, generator)
+    def predict(self, hist, action, generator=None, noise=None):
+        return euler_sample(self.velocity, hist, action, self.steps, generator, noise)
 
 
-def euler_sample(velocity, hist, action, steps, generator=None):
-    """Integrate a velocity field from noise to a frame in [0, 1] with Euler steps."""
+def euler_sample(velocity, hist, action, steps, generator=None, noise=None):
+    """Integrate a velocity field from noise to a frame in [0, 1] with Euler steps.
+
+    The starting noise is `noise` when given and is drawn from `generator` otherwise.
+    """
     hist = hist * 2 - 1
-    x = torch.randn(len(hist), 3, SIZE, SIZE, generator=generator, device=hist.device)
+    if noise is None:
+        noise = torch.randn(
+            len(hist), 3, SIZE, SIZE, generator=generator, device=hist.device
+        )
+    x = noise.to(hist.device)
     for i in range(steps):
         t = torch.full((len(x),), i / steps, device=x.device)
         x = x + velocity(x, t, hist, action) / steps

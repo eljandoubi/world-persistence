@@ -75,11 +75,11 @@ class OnnxPredictor:
     def velocity(self, x, t, hist, action):
         return self.run(x, t, hist, action)
 
-    def predict(self, hist, action, generator=None):
+    def predict(self, hist, action, generator=None, noise=None):
         hist = hist[:, -self.history :]
         if self.flow:
             return models.euler_sample(
-                self.velocity, hist, action, self.steps, generator
+                self.velocity, hist, action, self.steps, generator, noise
             )
         return self.run(hist, action).clamp(0, 1)
 

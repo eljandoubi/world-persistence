@@ -8,7 +8,7 @@ import torch.nn.functional as F
 
 from . import metrics
 from .models import count_params, flow_loss, make_model
-from .sim import CONTEXT, LENGTH
+from .sim import CONTEXT, LENGTH, SIZE
 
 UNROLL = 4
 
@@ -134,26 +134,49 @@ def train(
 
 
 @torch.no_grad()
-def rollout(model, frames, actions, generator=None):
-    """Roll out from the first CONTEXT frames; later frames are never read."""
+def rollout(model, frames, actions, generator=None, noise=None):
+    """Roll out from the first CONTEXT frames; later frames are never read.
+
+    `noise` (episodes, rollout steps, 3, SIZE, SIZE) gives a flow model its starting
+    noise at each step; without it the noise comes from `generator`.
+    """
     seq = [frames[:, t] for t in range(CONTEXT)]
     for t in range(CONTEXT, LENGTH):
         hist = torch.stack(seq[-CONTEXT:], dim=1)
-        seq.append(model.predict(hist, actions[:, t - 1], generator))
+        step = None if noise is None else noise[:, t - CONTEXT]
+        seq.append(model.predict(hist, actions[:, t - 1], generator, step))
     return torch.stack(seq, dim=1)
+
+
+def episode_noise(seed, first, count):
+    """Flow noise for episodes first to first + count - 1, one slice per rollout step.
+
+    Each episode has its own CPU generator, seeded with seed * 1000003 + the episode
+    number, so its noise does not depend on how episodes are batched or on the device.
+    """
+    steps = LENGTH - CONTEXT
+    out = torch.empty(count, steps, 3, SIZE, SIZE)
+    for i in range(count):
+        gen = torch.Generator().manual_seed(seed * 1_000_003 + first + i)
+        out[i] = torch.randn(steps, 3, SIZE, SIZE, generator=gen)
+    return out
 
 
 @torch.no_grad()
 def predict_episodes(model, episodes, device, batch=250, seed=0, amp=True):
-    """Roll the model out on every episode and return the frames on the CPU."""
+    """Roll the model out on every episode and return the frames on the CPU.
+
+    A flow model gets `episode_noise(seed, ...)`, so an episode's result does not
+    depend on the batch size, the device or which other episodes are scored with it.
+    """
     half = amp and device.type == "cuda"
-    gen = torch.Generator(device=device).manual_seed(seed) if model.flow else None
     out = []
     for i in range(0, len(episodes.frames), batch):
         frames = torch.as_tensor(episodes.frames[i : i + batch]).to(device)
         actions = torch.as_tensor(episodes.actions[i : i + batch]).to(device)
+        noise = episode_noise(seed, i, len(frames)).to(device) if model.flow else None
         with torch.autocast(device.type, dtype=torch.float16, enabled=half):
-            out.append(rollout(model, frames, actions, gen).float().cpu())
+            out.append(rollout(model, frames, actions, noise=noise).float().cpu())
     return torch.cat(out)
 
 

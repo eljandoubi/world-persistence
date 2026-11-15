@@ -50,6 +50,18 @@ def test_onnx_predictor_rolls_out_like_the_model(kind, tmp_path):
     assert (got - expected).abs().max() < 1e-3
 
 
+@pytest.mark.parametrize("kind", ["b", "d"])
+def test_onnx_and_torch_agree_when_the_noise_is_the_same(kind, tmp_path):
+    model = tuned_model(kind)
+    path = tmp_path / "step.onnx"
+    frugal.export_onnx(model, path)
+    predictor = frugal.OnnxPredictor(path, model)
+    ep, cpu = sim.simulate(6, seed=9), torch.device("cpu")
+    expected = training.predict_episodes(model, ep, cpu, batch=6, seed=2)
+    got = training.predict_episodes(predictor, ep, cpu, batch=2, seed=2)
+    assert (got - expected).abs().max() < 1e-3
+
+
 def test_latency_reports_ordered_percentiles(tmp_path):
     model = tuned_model("b")
     path = tmp_path / "step.onnx"

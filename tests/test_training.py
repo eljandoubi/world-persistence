@@ -136,6 +136,47 @@ def test_checkpoint_round_trip(tmp_path):
     assert torch.equal(model(hist, action), loaded(hist, action))
 
 
+class ZeroFlow:
+    """A flow sampler with zero velocity, so its prediction is the starting noise."""
+
+    flow, history, steps = True, sim.CONTEXT, 8
+
+    def predict(self, hist, action, generator=None, noise=None):
+        def velocity(x, t, hist, action):
+            return torch.zeros_like(x)
+
+        return models.euler_sample(velocity, hist, action, self.steps, generator, noise)
+
+
+def test_episode_noise_depends_only_on_the_seed_and_the_episode():
+    whole = training.episode_noise(3, 0, 6)
+    assert whole.shape == (6, sim.LENGTH - sim.CONTEXT, 3, sim.SIZE, sim.SIZE)
+    assert torch.equal(training.episode_noise(3, 2, 3), whole[2:5])
+    assert torch.equal(training.episode_noise(3, 4, 1)[0], whole[4])
+    assert not torch.equal(training.episode_noise(4, 0, 6), whole)
+    assert not torch.equal(whole[0], whole[1])
+    assert not torch.equal(whole[0, 0], whole[0, 1])
+
+
+def test_noise_follows_the_episode_and_the_step_whatever_the_batch(episodes):
+    sampler = ZeroFlow()
+    whole = training.predict_episodes(sampler, episodes, CPU, batch=12, seed=5)
+    parts = training.predict_episodes(sampler, episodes, CPU, batch=5, seed=5)
+    other = training.predict_episodes(sampler, episodes, CPU, batch=12, seed=6)
+    assert torch.equal(whole, parts) and not torch.equal(whole, other)
+    noise = training.episode_noise(5, 0, len(episodes.frames))
+    assert torch.equal(whole[:, sim.CONTEXT :], ((noise + 1) / 2).clamp(0, 1))
+
+
+def test_batching_does_not_change_a_flow_models_rollouts(episodes):
+    model = models.make_model("d", 8).eval()
+    whole = training.predict_episodes(model, episodes, CPU, batch=12, seed=5)
+    parts = training.predict_episodes(model, episodes, CPU, batch=5, seed=5)
+    other = training.predict_episodes(model, episodes, CPU, batch=12, seed=6)
+    assert torch.allclose(whole, parts, atol=1e-4)
+    assert not torch.allclose(whole, other, atol=1e-2)  # the noise does matter
+
+
 def test_evaluate_model_returns_all_tables(episodes):
     model = models.make_model("b", 8).eval()
     result = training.evaluate_model(model, episodes, CPU, batch=12)
