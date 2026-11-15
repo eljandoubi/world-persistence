@@ -1,11 +1,15 @@
 #!/bin/bash
-# Full study on one GPU. Stages: train, frugal, figures (default: all of them).
+# Full study on one GPU. Stages: baseline, train, frugal, figures (default: all of them).
 # STEPS sets the number of optimiser steps per model (default 3000).
 # The extra stage rescore re-scores saved weights after a change to the metrics.
 set -e
 cd "$(dirname "$0")/.."
 export PYTHONPATH=src
 STEPS=${STEPS:-3000}
+
+baseline() {
+    python scripts/baseline.py
+}
 
 train() {
     python scripts/train.py --models a b c d --seeds 0 1 2 --steps "$STEPS"
@@ -28,7 +32,7 @@ figures() {
     python scripts/figures.py curve
 }
 
-for stage in "${@:-train frugal figures}"; do
+for stage in "${@:-baseline train frugal figures}"; do
     for one in $stage; do
         "$one"
     done

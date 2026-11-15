@@ -7,6 +7,7 @@ import pathlib
 import numpy as np
 
 NAMES = {
+    "static": "static copy",
     "a": "A memoryless",
     "b": "B history",
     "c": "C unrolled",
@@ -19,6 +20,11 @@ HORIZONS = ["1", "4", "8", "16"]
 
 def load_runs(out):
     runs = {}
+    baseline = out / "baseline.json"
+    if baseline.exists():
+        runs["static"] = [
+            {"name": "static", "metrics": json.loads(baseline.read_text())}
+        ]
     for path in sorted((out / "runs").glob("*_s*.json")):
         run = json.loads(path.read_text())
         if run["name"] in NAMES:
@@ -73,7 +79,7 @@ def horizons(runs, split, field, scale, digits):
 def training(runs):
     rows = []
     for name, label in NAMES.items():
-        if name in runs:
+        if name in runs and "train" in runs[name][0]:
             logs = [r["train"] for r in runs[name]]
             rows.append(
                 [
