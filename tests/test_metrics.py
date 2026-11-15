@@ -48,18 +48,38 @@ def test_run_that_hides_again_before_it_is_visible_is_skipped():
     assert metrics.occlusion_events(covered).tolist() == [[0, 0, 1, 9]]
 
 
+def controls_of(covered):
+    """Positions of the events that have a control, and the control rows."""
+    keep, rows = metrics.control_events(covered, metrics.occlusion_events(covered))
+    return keep.tolist(), rows.tolist()
+
+
 def test_control_events_pair_each_event_with_a_visible_colour():
     covered = np.zeros((1, 20, 3))
     covered[0, 6:9, 0] = 1.0
     covered[0, 9, 0] = 0.4
-    events = metrics.occlusion_events(covered)
-    assert metrics.control_events(covered, events).tolist() == [[0, 1, 3, 10]]
+    assert controls_of(covered) == ([0], [[0, 1, 3, 10]])
     covered[0, 8, 1] = 0.5  # colour 1 is covered inside the window of frames 3 to 10
-    assert metrics.control_events(covered, events).tolist() == [[0, 2, 3, 10]]
+    assert controls_of(covered) == ([0], [[0, 2, 3, 10]])
     covered[0, 2, 2] = 0.5  # before the window: colour 2 still counts
-    assert metrics.control_events(covered, events).tolist() == [[0, 2, 3, 10]]
+    assert controls_of(covered) == ([0], [[0, 2, 3, 10]])
     covered[0, 5, 2] = 0.5
-    assert metrics.control_events(covered, events).shape == (0, 4)
+    assert controls_of(covered) == ([], [])
+
+
+def test_control_events_keep_the_index_of_the_event():
+    covered = np.zeros((2, 20, 3))
+    covered[:, 6:8, 0] = 1.0  # colour 0 hides in both episodes: events 0 and 2
+    covered[0, 12:14, 1] = 1.0  # colour 1 hides in episode 0: event 1
+    covered[0, 9, 2] = (
+        0.5  # with colour 0 hidden at 7, nothing is visible around event 1
+    )
+    events = metrics.occlusion_events(covered)
+    assert events[:, :2].tolist() == [[0, 0], [0, 1], [1, 0]]
+    keep, rows = metrics.control_events(covered, events)
+    assert keep.tolist() == [0, 2]
+    assert rows[:, [0, 2, 3]].tolist() == events[keep][:, [0, 2, 3]].tolist()
+    assert (rows[:, 1] != events[keep, 1]).all()
 
 
 def test_events_exist_in_the_simulator():
@@ -79,6 +99,37 @@ def test_ground_truth_scores_zero():
     assert 20 < control["n"] <= total["n"] and control["share"] == 1.0
     assert all(v == 0.0 for v in result["mse"].values())
     assert all(v < 1e-6 for v in result["drift_abs"].values())
+
+
+def test_matched_scores_cover_the_events_that_have_a_control():
+    ep = sim.simulate(150, seed=2)
+    events = metrics.occlusion_events(ep.covered)
+    keep, _ = metrics.control_events(ep.covered, events)
+    lost = np.setdiff1d(np.arange(len(events)), keep)
+    assert len(keep) > 20 and len(lost) > 20  # the simulator makes both kinds of event
+    pred = torch.as_tensor(ep.frames).clone()
+    for e, c, _, r in events[lost]:
+        pred[e, r, c] = pred[e, r].amin(dim=0)  # drop the colour, keep the others
+    result = metrics.evaluate(pred, ep)
+    total, matched, control = (
+        result[key]["all"] for key in ("reappearance", "matched", "control")
+    )
+    assert total["share"] < 0.9
+    assert matched["share"] == control["share"] == 1.0
+    assert matched["n"] == control["n"] < total["n"]
+
+
+def test_paired_hits_agree_with_the_summaries():
+    ep = sim.simulate(150, seed=2)
+    pred = torch.as_tensor(ep.frames).clone()
+    pred[:, sim.CONTEXT :] = pred[:, sim.CONTEXT - 1 : sim.CONTEXT]
+    result = metrics.evaluate(pred, ep)
+    pairs, n = result["paired"], result["matched"]["all"]["n"]
+    assert {len(v) for v in pairs.values()} == {n}
+    assert set(pairs["k"]) <= set(metrics.LENGTHS)
+    assert round(sum(pairs["target"]) / n, 4) == result["matched"]["all"]["share"]
+    assert round(sum(pairs["control"]) / n, 4) == result["control"]["all"]["share"]
+    assert 0 < sum(pairs["target"]) < n and 0 < sum(pairs["control"]) < n
 
 
 def test_shifted_copy_is_penalised():
