@@ -53,3 +53,11 @@ def test_the_run_script_trains_every_weight_of_the_documented_grid():
     documented = json.loads((ROOT / "results" / "lambda.json").read_text())
     assert [float(w) for w in grid] == sorted(map(float, documented["candidates"]))
     assert "--lams $LAMS" in script
+
+
+def test_the_run_script_needs_no_python_alias():
+    lines = (ROOT / "scripts" / "run_all.sh").read_text().splitlines()
+    code = [line for line in lines if not line.lstrip().startswith("#")]
+    assert "PYTHON=${PYTHON:-python3}" in code
+    calls = [line for line in code if re.search(r"scripts/\w+\.py| -c ", line)]
+    assert calls and all('"$PYTHON"' in line for line in calls)
