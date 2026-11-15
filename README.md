@@ -18,10 +18,10 @@ Numbers are the mean ± standard deviation over 3 training seeds, on the same fi
 
 - **Inside the memory window, history and rollout training help.** A square hidden for one frame comes back within 2 px in 14 percent of the cases for A, 33 for B, 48 for C, 17 for D and 31 for E (static copy: 12). Pooled over all lengths C reaches 37 ± 3 percent against 26 ± 1 for B. On the hard set the order is the same with smaller numbers (pooled: C 17, B 14, E 14, D 10, A 8, static copy 7).
 - **Beyond the window nothing persists.** For k = 4 to 6 no model is above 7 percent (the static copy is at 0 to 5), while B and C still place a colour that never left the view within 2 px in 42 to 78 percent of the control cases. Four true frames hold no pixel of a square that was hidden for four frames, so a model could only keep it by writing it into its own output frames.
-- **Rollout training mostly makes tracking better in general.** C also wins on the visible control (74 against 62 percent), and pooled over all lengths the gap between a visible square and a reappearing one is the same (37 against 36 points); per length it is 33 against 28 points at k = 1 and 50 against 62 at k = 3. C has a worse one-step error than B (MSE 1.04 against 0.61, times 1000), a better one at 16 steps (19.9 against 28.2), and trains 1.4 times longer (206 against 146 s).
+- **The visible control is not comparable with the reappearance share.** C also wins on the visible control (74 against 62 percent for B), but only 559 of the 1265 test events have a control colour, so the control share and the all-event reappearance share describe different events, and their difference mixes the cost of hiding a square with which events have a control. The run files now keep the hits of the reappearing colour and of the control colour on the same events, and `scripts/report.py` prints their paired gap with intervals that resample test episodes. The trained models were scored before that and their weights are gone, so only the static copy has the paired row so far: 11 against 13 percent on the same 559 events, a gap of 2.5 points (95 percent interval 0.2 to 5.1), where the subtraction with all events (9 percent) would give 4. A full run (`bash scripts/run_all.sh`) fills in the other models. C has a worse one-step error than B (MSE 1.04 against 0.61, times 1000), a better one at 16 steps (19.9 against 28.2), and trains 1.4 times longer (206 against 146 s).
 - **The flow model is last among the models with history.** D reappears within 2 px in 15 percent of all test events (B 26) and places a visible colour in 44 percent of the control cases (B 62). Its signed mass drift is negative at every horizon (-15.8 percent at 16 steps), and on the hard set its median error is the 32 px miss value at every k. On the hard set, however, its pixel MSE at 16 steps is the lowest of all models (38.2 against 48.0 for C and 61.2 for B, times 1000), so pixel error and persistence rank the models differently.
 - **The mass penalty does not help.** No weight beats weight 0 (model B) on any of the three validation columns. The weight chosen by the rule, 0.001, gives a model within the seed spread of B on the test set (share 25 ± 0 against 26 ± 1); weights of 0.1 and above are much worse (validation share 11 to 13 percent against 26, mass drift 43 to 83 percent against 21).
-- **Frugal inference.** On the best regression model (C), static int8 makes the network 3.5 times smaller (4.79 to 1.35 MB) and keeps persistence (share 40 to 41 percent on 200 test episodes), with no clear latency gain (4.46 to 4.15 ms per call on one CPU thread, inside the measurement noise); for D it costs persistence (share 18 to 14 percent and median error 15.6 to 32.0 px on 100 episodes) while pixel MSE does not move. Pruning 30 percent of the weights is free (share 40 against 41 for the finetune-only control), 50 percent costs 5 points, 70 percent collapses (share 18, median error at the 32 px miss value). Sparsity does not make the CPU run faster.
+- **Frugal inference.** On the best regression model (C), static int8 makes the network 3.5 times smaller (4.79 to 1.35 MB) and keeps persistence (share 40 to 41 percent on 200 test episodes), with no clear latency gain (4.46 to 4.15 ms per call on one CPU thread, inside the measurement noise). The same table shows D going from 18 to 14 percent, but its fp32 score came from the torch model on the GPU in batches of 250 and its int8 score from onnxruntime on the CPU in batches of 50, each drawing its own sampling noise, so that drop cannot be attributed to quantisation (the size and latency of D, 4.81 to 1.36 MB, are not affected). Scoring both precisions with the same batches and the same noise per episode and rollout step is implemented (`scripts/frugal.py`, `training.episode_noise`) but has not been rerun. Pruning 30 percent of the weights is free (share 40 against 41 for the finetune-only control), 50 percent costs 5 points, 70 percent collapses (share 18, median error at the 32 px miss value). Sparsity does not make the CPU run faster.
 
 ![rollout strip](results/rollout_strip.png)
 
@@ -85,7 +85,7 @@ Median distance on the hard set:
 
 ### Visible control
 
-The same score for a colour of the same episode that stayed fully visible from 7 frames before the reappearance to the reappearance frame (559 of the 1265 test events have one). It separates the cost of hiding a square from the cost of drawing and finding it.
+The same score for a colour of the same episode that stayed fully visible from 7 frames before the reappearance to the reappearance frame (559 of the 1265 test events have one). These are other events than the reappearances above, so this table is not to be subtracted from them; the paired table after it scores the reappearing colour and the control on the same 559 events.
 
 | model | k=1 | k=2 | k=3 | k=4 | k=5 | k=6 | all |
 |---|---|---|---|---|---|---|---|
@@ -96,6 +96,12 @@ The same score for a colour of the same episode that stayed fully visible from 7
 | C unrolled | 76 ± 1 | 71 ± 1 | 70 ± 4 | 65 ± 3 | 78 ± 7 | 70 ± 10 | 74 ± 1 |
 | D flow | 47 ± 1 | 46 ± 2 | 42 ± 4 | 20 ± 5 | 21 ± 11 | 21 ± 10 | 44 ± 1 |
 | E mass penalty | 66 ± 2 | 61 ± 3 | 59 ± 3 | 55 ± 8 | 54 ± 20 | 45 ± 18 | 63 ± 2 |
+
+Reappearing colour and visible control on the same 559 events. The gap is control minus reappearing colour in points, and its interval comes from resampling test episodes. Only the static copy has been scored this way so far (see the visible control bullet above); the run files written by `scripts/train.py` now carry the data for the other models.
+
+| model | reappearing colour (%) | visible control (%) | gap (points) | gap, 95% interval |
+|---|---|---|---|---|
+| static copy | 11 | 13 | 2.5 | +2.5 (+0.2 to +5.1) |
 
 ### Mass drift and pixel error
 
@@ -140,7 +146,7 @@ Model E on seed 0, scored on the validation episodes. Drift is the mean absolute
 
 The regression model with the highest validation share is C; D is the flow model, both seed 0. Latency is the median of 200 onnxruntime calls on one CPU thread at batch 1 on the Colab VM (2 shared vCPUs); D needs 8 calls per frame. In the precision table "episodes" is the number of test episodes scored (the first 200 for C, the first 100 for D); the pruning table uses all 1000.
 
-Precision:
+Precision. In these rows the fp32 scores come from the torch model on the GPU in batches of 250 and the int8 scores from onnxruntime on the CPU in batches of 50, each drawing its own sampling noise, so the share and median error of the two D rows are not directly comparable (C is deterministic, so for C only the numerics differ):
 
 | model | weights | size (MB) | ms per call | ms per frame | episodes | share < 2 px (%) | median error (px) | drift@16 (%) | mse@16 x1000 |
 |---|---|---|---|---|---|---|---|---|---|
@@ -183,21 +189,22 @@ Colab T4, fp16 autocast, seconds per model and seed (E seed 0 shared the GPU wit
 ```
 src/worldpersist/
   sim.py        occlusion simulator (numpy), fixed splits, true hidden or visible state
-  metrics.py    colour masks, centroid detector, reappearance events, mass drift
+  metrics.py    colour masks, centroid detector, reappearance events, matched controls, mass drift
   models.py     FiLM UNet, regression predictors, flow matching predictor
-  training.py   training loops (one step, unrolled, flow, mass penalty), rollout, checkpoints
+  training.py   training loops (one step, unrolled, flow, mass penalty), rollout, per-episode flow noise, checkpoints
   frugal.py     ONNX export, int8 quantisation, CPU latency, magnitude pruning
+  stats.py      bootstrap that resamples whole test episodes
 scripts/
-  train.py          train and score models, one JSON per run in results/runs/
+  train.py          train and score models, one JSON per run in results/runs/ (a run is skipped only when its JSON and its weights both exist and match the settings)
   select_lambda.py  pick the mass penalty weight of model E on validation
-  rescore.py        score saved weights again (adds the visible control to older runs)
+  rescore.py        score saved weights again (after a change to the metrics)
   baseline.py       score a static copy of the last context frame
   frugal.py         size, latency and persistence of the int8 and pruned models
   figures.py        rollout strip and reappearance curve
   report.py         print the tables of this README from results/
-  run_all.sh        every stage in order
-tests/              simulator, metrics, models, training, ONNX parity (about a minute on CPU)
-results/            runs/*.json, lambda.json, baseline.json, frugal.json, two figures
+  run_all.sh        every stage in order; OUT and CKPT choose the result and weight folders
+tests/              simulator, metrics, models, training, ONNX parity, report, run scripts (about two minutes on CPU)
+results/            runs/*.json, lambda.json, baseline.json (also the hits of every matched event), frugal.json, two figures
 ```
 
 ## Reproduce
@@ -212,37 +219,41 @@ python scripts/train.py --models a b c d --seeds 0 --steps 20 --base 8 \
     --train-episodes 64 --eval-episodes 30 --out /tmp/smoke/results --ckpt /tmp/smoke/ckpt
 python scripts/report.py --out /tmp/smoke/results
 
-# the full study, on a GPU
+# the full study, on a GPU (about an hour on a T4): every model, the frugal study, the figures
 bash scripts/run_all.sh
 python scripts/report.py
+
+# the same into other folders, leaving the committed results alone
+OUT=/tmp/study/results CKPT=/tmp/study/ckpt bash scripts/run_all.sh
+python scripts/report.py --out /tmp/study/results
 ```
 
-Data are generated from fixed seeds, nothing is downloaded. The numbers above come from one Colab T4 session (Python 3.13.16, torch 2.14.1).
+Data are generated from fixed seeds, nothing is downloaded. The trained-model numbers above come from one Colab T4 session (Python 3.13.16, torch 2.14.1) that ran before three changes: the starting noise of D is now drawn per episode and rollout step, the reappearing colour is now also scored on the events that have a control, and the int8 against fp32 comparison now shares batches and noise (`results/baseline.json` was scored again with the second change, on the CPU). The code in this repo therefore draws other samples for D than the committed D runs did, and a full run rewrites `results/`.
 
 ## Method notes
 
 **Simulator** (`sim.py`). Frames are 32x32x3. Each square has its own colour channel and exact pixel coverage, so sub-pixel motion shows as anti-aliasing and overlapping squares add up instead of hiding each other. The grey bar (0.5 in all channels, 8 px wide, full height) is drawn on top. Square velocity components are drawn in [-1.2, 1.2] px per frame with at least one above 0.4; squares bounce elastically on the walls and pass through each other. The left edge of the bar moves by the action, one of {-2, 0, +2} px per frame, redrawn with probability 0.2 per frame and clipped to the frame. A square is hidden when no part of it is outside the bar. Episodes have 20 frames: 4 context frames and 16 predicted ones. Models get all actions and never a future frame. Splits come from fixed seeds: 4000 train, 500 validation, 1000 test episodes. The hard set (1000 episodes) draws square velocity components in [-1.8, 1.8] and bar moves in {-4, -2, 0, 2, 4}, both partly outside the training range.
 
-**Models** (`models.py`). One UNet (channels 32, 64, 128, GroupNorm, residual blocks, the action enters through FiLM) with 1.18M parameters; D has 1.19M. Regression models output the last frame plus a correction and clamp to [0, 1] when their output is fed back. A sees only the last frame; B, C and E see the last four. C is trained on 4 unrolled steps with gradients through its own predictions. D is conditional flow matching in [-1, 1] units from Gaussian noise: the history frames get noise of level $\sigma \sim U[0, 0.1]$ in training, sampling uses 8 Euler steps, no history noise, one sample per frame from a fixed generator seed. E adds $`\lambda\,\mathrm{mean}_c \bigl(m_c(\hat x_t) - m_c(x_{t-1})\bigr)^2`$ to the pixel loss, where $m_c$ is the mass of colour $c$ divided by 25 (the area of a square in pixels) and $x_{t-1}$ is the true previous frame.
+**Models** (`models.py`). One UNet (channels 32, 64, 128, GroupNorm, residual blocks, the action enters through FiLM) with 1.18M parameters; D has 1.19M. Regression models output the last frame plus a correction and clamp to [0, 1] when their output is fed back. A sees only the last frame; B, C and E see the last four. C is trained on 4 unrolled steps with gradients through its own predictions. D is conditional flow matching in [-1, 1] units from Gaussian noise: the history frames get noise of level $\sigma \sim U[0, 0.1]$ in training, sampling uses 8 Euler steps, no history noise, one sample per frame. The starting noise is drawn per episode and rollout step from a seed (`training.episode_noise`), so it does not depend on the batch size, the device or the precision of the network; the D runs in `results/` were scored earlier, with one generator seeded once per evaluation in batches of 250 on the GPU. E adds $`\lambda\,\mathrm{mean}_c \bigl(m_c(\hat x_t) - m_c(x_{t-1})\bigr)^2`$ to the pixel loss, where $m_c$ is the mass of colour $c$ divided by 25 (the area of a square in pixels) and $x_{t-1}$ is the true previous frame.
 
 **Budget.** Every model gets 3000 AdamW steps (learning rate 1e-3, 100 warm-up steps, cosine decay, gradient clipping at 1, fp16 autocast), and every step runs the network on 128 frames. C therefore uses 32 windows of 4 unrolled steps per step: the same network work, fewer distinct windows. Apart from $\lambda$ nothing was tuned. Seed 0 of E is the weight 0.001 candidate; it trained next to another job on the same GPU, which is why its time in the training table is high.
 
-**Persistence metrics** (`metrics.py`). The mask of colour $c$ is $m_c = \max(0, x_c - \min_{c'} x_{c'} - 0.1) / 0.9$ on frames clamped to [0, 1]; the grey bar has equal channels, so it gives zero. The detected position is the centroid of $m_c$, and a colour with less than 5 px of mask mass counts as not found. An event is a run of $k$ fully hidden frames followed by the first fully visible frame, with partial frames allowed in between (a run that hides again before that is skipped) and with the visible frame inside the predicted part. The reappearance error is the distance between the detected and the true centre of the square in that frame; a square that is not found gets 32 px. The visible control scores another colour of the same episode that stayed fully visible from 7 frames before to the reappearance frame. Mass drift is the mean over colours of (predicted mass minus true mass) / 25 at frame $3 + h$. On ground truth the detector reads the true centre to 0.05 px (median over the 1265 test events) and scores zero drift and MSE. Runs with $k > 6$ are left out of the tables. The static copy row repeats the last context frame for all 16 steps (`scripts/baseline.py`).
+**Persistence metrics** (`metrics.py`). The mask of colour $c$ is $m_c = \max(0, x_c - \min_{c'} x_{c'} - 0.1) / 0.9$ on frames clamped to [0, 1]; the grey bar has equal channels, so it gives zero. The detected position is the centroid of $m_c$, and a colour with less than 5 px of mask mass counts as not found. An event is a run of $k$ fully hidden frames followed by the first fully visible frame, with partial frames allowed in between (a run that hides again before that is skipped) and with the visible frame inside the predicted part. The reappearance error is the distance between the detected and the true centre of the square in that frame; a square that is not found gets 32 px. The visible control scores another colour of the same episode that stayed fully visible from 7 frames before to the reappearance frame. Only 559 of the 1265 test events have one: `matched` in a run file scores the reappearing colour on those events, and `paired` lists the hits of both colours with the episode, for intervals that resample whole test episodes (`stats.py`). Mass drift is the mean over colours of (predicted mass minus true mass) / 25 at frame $3 + h$. On ground truth the detector reads the true centre to 0.05 px (median over the 1265 test events) and scores zero drift and MSE. Runs with $k > 6$ are left out of the tables. The static copy row repeats the last context frame for all 16 steps (`scripts/baseline.py`).
 
-**Scoring pass.** Each run is scored at the end of training, but the visible control was added after A to D had started, so `scripts/rescore.py` scored every saved checkpoint again with the final metric code. The tables come from that pass; GPU kernels are not bit-exact, so a few cells differ in the last digit from the scores printed during training.
+**Scoring pass.** Each run is scored at the end of training, but the visible control was added after A to D had started, so `scripts/rescore.py` scored every saved checkpoint again with the final metric code. The tables come from that pass; GPU kernels are not bit-exact, so a few cells differ in the last digit from the scores printed during training. That pass and the training runs predate `matched` and `paired`, so only `results/baseline.json` has them.
 
 **Mass penalty weight.** The first grid was 0.1, 1 and 10. The log at the end of each run prints the test share, and those three runs came out far below B (15.6, 11.9 and 11.1 percent against 26.2 for B on seed 0), so 0.001 and 0.01 were added: the grid was extended after a look at test numbers. The weight itself is still chosen on validation only, by a rule fixed before any E run: the lowest mean absolute mass drift at horizons 4, 8 and 16, seed 0; the other seeds then train with that weight. The smallest weight won, and model B (weight 0) is ahead of it on all three validation columns. A likely reason for the damage at large weights is that the penalty compares with the visible mass of the previous frame, which legitimately drops when the bar covers a square, and the loss cannot tell that from drift. That explanation was not tested.
 
-**Frugal inference** (`frugal.py`, `scripts/frugal.py`). The regression model is the one with the highest validation share of reappearances within 2 px (C), and D is the flow model, both seed 0. The one-step network (for D, the velocity network, called 8 times per frame) is exported to ONNX (opset 17, fp32, dynamic batch) and run with onnxruntime on the CPU of the Colab VM: batch 1, one thread, median of 200 runs after 20 warm-up runs, 10th and 90th percentile and the load average stored next to it. int8 is static quantisation in QDQ format (uint8 activations, per-channel int8 weights, convolutions and matrix products only) calibrated on 200 training-style windows from the validation episodes; it is scored by onnxruntime on the first 200 test episodes (first 100 for D), next to the fp32 torch model on the same episodes. Pruning zeroes the smallest-magnitude weights of every convolution and linear layer, the same share per layer, then finetunes for 600 steps at learning rate 3e-4 with the mask fixed; the 0 percent row is the same finetune without pruning, to separate the effect of the finetune from that of the sparsity. Pruned models are scored on all 1000 test episodes.
+**Frugal inference** (`frugal.py`, `scripts/frugal.py`). The regression model is the one with the highest validation share of reappearances within 2 px (C), and D is the flow model, both seed 0. The one-step network (for D, the velocity network, called 8 times per frame) is exported to ONNX (opset 17, fp32, dynamic batch) and run with onnxruntime on the CPU of the Colab VM: batch 1, one thread, median of 200 runs after 20 warm-up runs, 10th and 90th percentile and the load average stored next to it. int8 is static quantisation in QDQ format (uint8 activations, per-channel int8 weights, convolutions and matrix products only) calibrated on 200 training-style windows from the validation episodes. The script now scores fp32 and int8 through onnxruntime on the CPU with the same episodes, the same batches of 50 and, for D, the same noise (3 sampling seeds), and keeps the hit of every event, so that a difference between the two comes from the weights alone. The committed `frugal.json` was written by the earlier version, which scored int8 through onnxruntime on the first 200 test episodes (first 100 for D) and fp32 through torch on the GPU. Pruning zeroes the smallest-magnitude weights of every convolution and linear layer, the same share per layer, then finetunes for 600 steps at learning rate 3e-4 with the mask fixed; the 0 percent row is the same finetune without pruning, to separate the effect of the finetune from that of the sparsity. Pruned models are scored on all 1000 test episodes.
 
 ## Limits
 
 - Synthetic and tiny: 32x32 frames, three squares, linear motion. Nothing here says how real video models behave.
 - The history is four frames. After four fully hidden frames no pixel of the true frames in the window shows the square, so for k >= 4 a model can only guess or carry information in its own output frames. The k = 4, 5, 6 cells rest on 38, 39 and 20 test events (a single event is 3 to 5 points), so they are noisy, and no model with a longer memory or a latent state was tried.
 - Three training seeds and 3000 steps per model. D (flow matching) in particular is probably undertrained at this budget, and a longer schedule could change the order of B, C and D. The penalty weight was searched on a five-point grid with one seed, and the grid was extended after a look at test scores (see Method notes).
-- The detector reads positions from colour masks, so a square drawn faintly counts as not found (32 px). D draws one noisy sample per frame, and its metrics include that sampling noise.
-- The frugal numbers use seed 0 only. int8 is scored on the first 200 (regression) or 100 (flow) test episodes, latency is one thread at batch 1 on a shared 2-vCPU Colab VM (load average recorded in `results/frugal.json`), and unstructured sparsity runs on dense kernels, so it cannot speed up the CPU.
-- Mass drift is measured on the visible frame, so it also moves when a square is legitimately hidden; it is a consistency check, not a count of objects.
+- The detector reads positions from colour masks, so a square drawn faintly counts as not found (32 px). Mass drift is measured on the visible frame, so it also moves when a square is legitimately hidden; it is a consistency check, not a count of objects. D draws one noisy sample per frame, and its metrics include that sampling noise.
+- The frugal numbers use seed 0 only. int8 is scored on the first 200 (regression) or 100 (flow) test episodes, and it is tied to the CPU that ran it (unsigned by signed 8-bit kernels round differently without VNNI). Latency is one thread at batch 1 on a shared 2-vCPU Colab VM (load average recorded in `results/frugal.json`), and unstructured sparsity runs on dense kernels, so it cannot speed up the CPU.
+- Two analyses are unfinished: the paired control gap exists only for the static copy, and the two D rows of the precision table were not scored with matched noise. Both need a full run, which rewrites `results/`.
 
 ## License
 
