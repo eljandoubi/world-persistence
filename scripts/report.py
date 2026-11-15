@@ -96,6 +96,7 @@ def training(runs):
 
 
 def penalty(out):
+    """Validation scores of the mass penalty weights, with model B as weight 0."""
     path = out / "lambda.json"
     if not path.exists():
         return None
@@ -110,6 +111,22 @@ def penalty(out):
         ]
         for lam, row in info["candidates"].items()
     ]
+    plain = out / "runs" / "b_s0.json"
+    if plain.exists():
+        val = json.loads(plain.read_text())["metrics"]["val"]
+        drift = np.mean([val["drift_abs"][h] for h in ("4", "8", "16")])
+        share = val["reappearance"]["all"]["share"]
+        mse = val["mse"]["16"]
+        rows.insert(
+            0,
+            [
+                "0 (B)",
+                f"{drift * 100:.2f}",
+                f"{share * 100:.0f}",
+                f"{mse * 1000:.2f}",
+                "",
+            ],
+        )
     header = [
         "weight",
         "val drift (%)",
