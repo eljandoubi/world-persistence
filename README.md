@@ -203,7 +203,7 @@ scripts/
   figures.py        rollout strip and reappearance curve
   report.py         print the tables of this README from results/
   run_all.sh        every stage in order; OUT and CKPT choose the result and weight folders
-tests/              simulator, metrics, models, training, ONNX parity, report, run scripts (about two minutes on CPU)
+tests/              simulator, metrics, models, training, ONNX parity, report, run scripts (under a minute on a laptop CPU)
 results/            runs/*.json, lambda.json, baseline.json (also the hits of every matched event), frugal.json, two figures
 ```
 
@@ -219,7 +219,7 @@ python scripts/train.py --models a b c d --seeds 0 --steps 20 --base 8 \
     --train-episodes 64 --eval-episodes 30 --out /tmp/smoke/results --ckpt /tmp/smoke/ckpt
 python scripts/report.py --out /tmp/smoke/results
 
-# the full study, on a GPU (about an hour on a T4): every model, the frugal study, the figures
+# the full study, on a GPU: every model, the frugal study, the figures
 bash scripts/run_all.sh
 python scripts/report.py
 
