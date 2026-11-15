@@ -359,9 +359,9 @@ def main():
         print(tables[0])
         print("\n### Frugal inference: pruning, full test set\n")
         print(tables[1])
-        print("\n### Frugal inference: int8 against fp32, same events and noise\n")
         if tables[2]:
             print("\n### Frugal inference: int8 against fp32, same events and noise\n")
+            print(tables[2])
 
 
 if __name__ == "__main__":
