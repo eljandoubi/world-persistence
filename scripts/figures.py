@@ -76,8 +76,20 @@ def curve(args):
         if run["name"] in NAMES:
             runs.setdefault(run["name"], []).append(run)
     lengths = [str(n) for n in metrics.LENGTHS]
+    baseline = pathlib.Path(args.out) / "baseline.json"
+    static = json.loads(baseline.read_text()) if baseline.exists() else None
     fig, axes = plt.subplots(1, 2, figsize=(8, 3.2), sharey=True)
     for ax, split in zip(axes, ("test", "hard"), strict=True):
+        if static:
+            rows = static[split]["reappearance"]
+            ax.plot(
+                range(1, len(lengths) + 1),
+                [100 * rows[k]["share"] for k in lengths],
+                color="black",
+                linestyle="--",
+                linewidth=1,
+                label="static copy",
+            )
         for name, group in runs.items():
             share = np.array(
                 [
