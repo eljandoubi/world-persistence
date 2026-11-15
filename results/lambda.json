@@ -1,0 +1,31 @@
+{
+ "criterion": "mean absolute mass drift on validation at horizons 4, 8 and 16",
+ "candidates": {
+  "0.001": {
+   "val_drift_abs": 0.212878,
+   "val_share": 0.2418,
+   "val_mse_16": 0.027464
+  },
+  "0.01": {
+   "val_drift_abs": 0.234281,
+   "val_share": 0.1978,
+   "val_mse_16": 0.028725
+  },
+  "0.1": {
+   "val_drift_abs": 0.434204,
+   "val_share": 0.1303,
+   "val_mse_16": 0.037092
+  },
+  "1": {
+   "val_drift_abs": 0.829457,
+   "val_share": 0.113,
+   "val_mse_16": 0.046441
+  },
+  "10": {
+   "val_drift_abs": 0.769577,
+   "val_share": 0.1099,
+   "val_mse_16": 0.045863
+  }
+ },
+ "chosen": 0.001
+}
