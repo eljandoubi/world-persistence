@@ -159,6 +159,7 @@ def quantize(src, dst, calibration):
         activation_type=QuantType.QUInt8,
         weight_type=QuantType.QInt8,
         per_channel=True,
+        op_types_to_quantize=["Conv", "MatMul", "Gemm"],
     )
     os.remove(prepared)
 
