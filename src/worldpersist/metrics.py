@@ -5,10 +5,10 @@ import torch
 
 from .sim import CONTEXT, SIZE, SQUARE
 
-DEAD = 0.1
-MIN_MASS = 5.0
-RADIUS = 2.0
-MISS = float(SIZE)
+DEAD = 0.1  # mask values below this are noise
+MIN_MASS = 5.0  # px of mask needed to call a colour found
+RADIUS = 2.0  # px, a reappearance this close to the truth counts as kept
+MISS = float(SIZE)  # error given to a colour that is not found
 HORIZONS = (1, 4, 8, 16)
 LENGTHS = (1, 2, 3, 4, 5, 6)
 NOMINAL = float(SQUARE * SQUARE)
