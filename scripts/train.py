@@ -42,7 +42,7 @@ def main():
     p.add_argument("--seeds", nargs="+", type=int, default=[0, 1, 2])
     p.add_argument("--lams", nargs="+", type=float, default=[1.0])
     p.add_argument("--name", help="run name; default is the model letter")
-    p.add_argument("--steps", type=int, default=4000)
+    p.add_argument("--steps", type=int, default=3000)
     p.add_argument("--batch", type=int, default=128)
     p.add_argument("--lr", type=float, default=1e-3)
     p.add_argument("--base", type=int, default=32)
@@ -60,10 +60,10 @@ def main():
     train_set = sim.load_split("train", args.train_episodes)
     scored = {s: sim.load_split(s, args.eval_episodes) for s in ("val", "test", "hard")}
 
-    for kind in args.models:
-        for lam in args.lams if kind == "e" else [0.0]:
-            name = args.name or (f"e_lam{lam:g}" if kind == "e" else kind)
-            for seed in args.seeds:
+    for seed in args.seeds:
+        for kind in args.models:
+            for lam in args.lams if kind == "e" else [0.0]:
+                name = args.name or (f"e_lam{lam:g}" if kind == "e" else kind)
                 path = runs / f"{name}_s{seed}.json"
                 if path.exists():
                     print("skip", path, flush=True)
