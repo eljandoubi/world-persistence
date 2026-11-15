@@ -19,6 +19,8 @@ NAMES = {
 LENGTHS = ["1", "2", "3", "4", "5", "6", "all"]
 HORIZONS = ["1", "4", "8", "16"]
 REFERENCE = "b"
+# the weights tried before the grid was extended after a look at test shares
+FIRST_GRID = (0.1, 1.0, 10.0)
 
 
 def load_runs(out):
@@ -184,23 +186,39 @@ def training(runs):
     return table(header, rows)
 
 
+def share_on_test(path):
+    """Share within 2 px over all test events in one run file, as text."""
+    if not path.exists():
+        return "n/a"
+    run = json.loads(path.read_text())
+    return f"{run['metrics']['test']['reappearance']['all']['share'] * 100:.1f}"
+
+
 def penalty(out):
-    """Validation scores of the mass penalty weights, with model B as weight 0."""
+    """Scores of the mass penalty weights, with model B as weight 0.
+
+    The validation columns are what the selection rule read. The test column is
+    shown because the grid was extended after the test shares of its first three
+    weights had been seen.
+    """
     path = out / "lambda.json"
     if not path.exists():
         return None
     info = json.loads(path.read_text())
+    runs = out / "runs"
     rows = [
         [
             lam,
+            "first" if float(lam) in FIRST_GRID else "added",
             f"{row['val_drift_abs'] * 100:.2f}",
             f"{row['val_share'] * 100:.0f}",
             f"{row['val_mse_16'] * 1000:.2f}",
+            share_on_test(runs / f"e_lam{lam}_s0.json"),
             "yes" if float(lam) == info["chosen"] else "",
         ]
         for lam, row in info["candidates"].items()
     ]
-    plain = out / "runs" / "b_s0.json"
+    plain = runs / "b_s0.json"
     if plain.exists():
         val = json.loads(plain.read_text())["metrics"]["val"]
         drift = np.mean([val["drift_abs"][h] for h in ("4", "8", "16")])
@@ -210,17 +228,21 @@ def penalty(out):
             0,
             [
                 "0 (B)",
+                "",
                 f"{drift * 100:.2f}",
                 f"{share * 100:.0f}",
                 f"{mse * 1000:.2f}",
+                share_on_test(plain),
                 "",
             ],
         )
     header = [
         "weight",
+        "grid",
         "val drift (%)",
         "val share < 2 px (%)",
         "val mse@16 x1000",
+        "test share < 2 px (%)",
         "chosen",
     ]
     return table(header, rows)
@@ -351,7 +373,7 @@ def main():
     print(training(runs))
     lam = penalty(out)
     if lam:
-        print("\n### Mass penalty weight (validation)\n")
+        print("\n### Mass penalty weight\n")
         print(lam)
     tables = frugal(out)
     if tables:

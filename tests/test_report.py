@@ -159,3 +159,25 @@ def test_older_frugal_results_have_no_matched_comparison(tmp_path):
     precision, _, same = report.frugal(tmp_path)
     assert cells(precision.splitlines()[3])[6] == "30"  # the earlier int8 score
     assert same is None
+
+
+def write_run(path, val_share, test_share):
+    scored = {"drift_abs": {h: 0.2 for h in ("4", "8", "16")}, "mse": {"16": 0.027}}
+    metrics = {
+        split: dict(scored, reappearance={"all": {"share": share}})
+        for split, share in (("val", val_share), ("test", test_share))
+    }
+    path.write_text(json.dumps({"metrics": metrics}))
+
+
+def test_penalty_table_marks_the_first_grid_and_shows_the_test_share(tmp_path):
+    (tmp_path / "runs").mkdir()
+    row = {"val_drift_abs": 0.2, "val_share": 0.24, "val_mse_16": 0.027}
+    info = {"candidates": {"0.001": row, "10": row}, "chosen": 0.001}
+    (tmp_path / "lambda.json").write_text(json.dumps(info))
+    write_run(tmp_path / "runs" / "b_s0.json", 0.26, 0.2617)
+    write_run(tmp_path / "runs" / "e_lam0.001_s0.json", 0.24, 0.2569)
+    rows = [cells(line) for line in report.penalty(tmp_path).splitlines()[2:]]
+    assert [r[:2] for r in rows] == [["0 (B)", ""], ["0.001", "added"], ["10", "first"]]
+    assert [r[5] for r in rows] == ["26.2", "25.7", "n/a"]  # no run file for weight 10
+    assert [r[6] for r in rows] == ["", "yes", ""]
