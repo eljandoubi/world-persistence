@@ -139,5 +139,5 @@ def test_checkpoint_round_trip(tmp_path):
 def test_evaluate_model_returns_all_tables(episodes):
     model = models.make_model("b", 8).eval()
     result = training.evaluate_model(model, episodes, CPU, batch=12)
-    assert set(result) == {"reappearance", "drift_abs", "drift", "mse"}
+    assert set(result) == {"reappearance", "control", "drift_abs", "drift", "mse"}
     assert set(result["mse"]) == {"1", "4", "8", "16"}

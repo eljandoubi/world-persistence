@@ -48,6 +48,20 @@ def test_run_that_hides_again_before_it_is_visible_is_skipped():
     assert metrics.occlusion_events(covered).tolist() == [[0, 0, 1, 9]]
 
 
+def test_control_events_pair_each_event_with_a_visible_colour():
+    covered = np.zeros((1, 20, 3))
+    covered[0, 6:9, 0] = 1.0
+    covered[0, 9, 0] = 0.4
+    events = metrics.occlusion_events(covered)
+    assert metrics.control_events(covered, events).tolist() == [[0, 1, 3, 10]]
+    covered[0, 8, 1] = 0.5  # colour 1 is covered inside the window of frames 3 to 10
+    assert metrics.control_events(covered, events).tolist() == [[0, 2, 3, 10]]
+    covered[0, 2, 2] = 0.5  # before the window: colour 2 still counts
+    assert metrics.control_events(covered, events).tolist() == [[0, 2, 3, 10]]
+    covered[0, 5, 2] = 0.5
+    assert metrics.control_events(covered, events).shape == (0, 4)
+
+
 def test_events_exist_in_the_simulator():
     ep = sim.simulate(200, seed=1)
     events = metrics.occlusion_events(ep.covered)
@@ -61,6 +75,8 @@ def test_ground_truth_scores_zero():
     total = result["reappearance"]["all"]
     assert total["n"] > 50
     assert total["median"] < 0.1 and total["share"] == 1.0 and total["miss"] == 0.0
+    control = result["control"]["all"]
+    assert 20 < control["n"] <= total["n"] and control["share"] == 1.0
     assert all(v == 0.0 for v in result["mse"].values())
     assert all(v < 1e-6 for v in result["drift_abs"].values())
 
@@ -71,6 +87,7 @@ def test_shifted_copy_is_penalised():
     result = metrics.evaluate(shifted, ep)
     total = result["reappearance"]["all"]
     assert abs(total["median"] - 3.0) < 0.1 and total["share"] < 0.05
+    assert result["control"]["all"]["share"] < 0.05
     assert all(v > 0 for v in result["mse"].values())
 
 

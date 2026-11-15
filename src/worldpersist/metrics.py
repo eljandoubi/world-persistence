@@ -64,6 +64,21 @@ def occlusion_events(covered):
     return np.array(events, dtype=np.int64).reshape(-1, 4)
 
 
+def control_events(covered, events):
+    """Pair each event with another colour that stays fully visible around its frame.
+
+    Events with no such colour are dropped. Rows are (episode, colour, k, frame).
+    """
+    visible = covered <= 1e-9
+    rows = []
+    for e, c, k, r in events:
+        window = visible[e, max(r - 7, 0) : r + 1]
+        others = [o for o in range(window.shape[1]) if o != c and window[:, o].all()]
+        if others:
+            rows.append((e, others[0], k, r))
+    return np.array(rows, dtype=np.int64).reshape(-1, 4)
+
+
 def reappearance(pred, pos, events):
     """Pixel distance between detected and true centre at each reappearance.
 
@@ -97,11 +112,16 @@ def summarize(error, found, k):
 
 
 def evaluate(pred, ep):
-    """Persistence numbers for rolled-out frames of shape (n, LENGTH, 3, SIZE, SIZE)."""
+    """Persistence numbers for rolled-out frames of shape (n, LENGTH, 3, SIZE, SIZE).
+
+    The control entry scores a square that stayed visible next to each event.
+    """
     pred = pred.clamp(0, 1)
     truth = torch.as_tensor(ep.frames)
     events = occlusion_events(ep.covered)
     error, found = reappearance(pred, ep.pos, events)
+    controls = control_events(ep.covered, events)
+    control_error, control_found = reappearance(pred, ep.pos, controls)
     at = [CONTEXT - 1 + h for h in HORIZONS]
     drift = (masses(pred[:, at]) - masses(truth[:, at])) / NOMINAL
     mse = ((pred[:, at] - truth[:, at]) ** 2).mean(dim=(2, 3, 4))
@@ -113,6 +133,7 @@ def evaluate(pred, ep):
 
     return {
         "reappearance": summarize(error, found, events[:, 2]),
+        "control": summarize(control_error, control_found, controls[:, 2]),
         "drift_abs": by_horizon(drift.abs().mean(dim=-1)),
         "drift": by_horizon(drift.mean(dim=-1)),
         "mse": by_horizon(mse),
