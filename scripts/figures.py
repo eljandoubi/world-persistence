@@ -10,7 +10,13 @@ import torch
 
 from worldpersist import metrics, sim, training
 
-NAMES = {"a": "A", "b": "B", "c": "C", "d": "D", "e": "E"}
+NAMES = {
+    "a": "A memoryless",
+    "b": "B history",
+    "c": "C unrolled",
+    "d": "D flow",
+    "e": "E mass penalty",
+}
 COLOURS = {
     "a": "#888888",
     "b": "#1f77b4",
@@ -34,7 +40,9 @@ def strip(args):
     rows = {"truth": torch.as_tensor(episodes.frames)}
     for name in NAMES:
         model = training.load_model(pathlib.Path(args.ckpt) / f"{name}_s0.pt", device)
-        rows[NAMES[name]] = training.predict_episodes(model, episodes, device)
+        rows[NAMES[name].split()[0]] = training.predict_episodes(
+            model, episodes, device
+        )
     times = list(range(first, last + 1))
     fig, axes = plt.subplots(len(rows), len(times), figsize=(0.95 * len(times), 6.2))
     for i, (label, frames) in enumerate(rows.items()):
