@@ -26,12 +26,38 @@ def best_regressor(runs):
     return best
 
 
-def score_onnx(path, like, episodes, batch=50):
-    """Persistence metrics of an ONNX network rolled out on the CPU."""
-    predictor = frugal.OnnxPredictor(path, like, threads=2)
-    return metrics.evaluate(
-        training.predict_episodes(predictor, episodes, CPU, batch), episodes
-    )
+def lean(result):
+    """A persistence summary without the per-event lists."""
+    return {key: value for key, value in result.items() if key != "paired"}
+
+
+def score_precision(fp32, int8, like, episodes, seeds, batch=50):
+    """Score the fp32 and int8 networks on the CPU with the same episodes and noise.
+
+    Both run through onnxruntime with the same batches, and a flow model gets the noise
+    of `training.episode_noise` for each sampling seed, so a difference between the two
+    comes from the weights alone. Per sampling seed this keeps the summary and the hit
+    of every event; the torch fp32 model on the same noise gives the parity check.
+    """
+    out = {
+        "seeds": list(seeds),
+        "fp32": [],
+        "int8": [],
+        "hits": {"fp32": [], "int8": []},
+    }
+    first = None
+    for name, path in (("fp32", fp32), ("int8", int8)):
+        predictor = frugal.OnnxPredictor(path, like, threads=2)
+        for seed in seeds:
+            pred = training.predict_episodes(predictor, episodes, CPU, batch, seed)
+            first = pred if (name, seed) == ("fp32", seeds[0]) else first
+            out[name].append(lean(metrics.evaluate(pred, episodes)))
+            episode, k, hit = metrics.event_hits(pred, episodes)
+            out["hits"][name].append(hit.tolist())
+    out["event"] = {"episode": episode.tolist(), "k": k.tolist()}
+    torch_pred = training.predict_episodes(like, episodes, CPU, batch, seeds[0], False)
+    out["fp32_pixel_gap_to_torch"] = round(float((first - torch_pred).abs().max()), 6)
+    return out
 
 
 def study(kind, args, device, data, work, lam):
@@ -48,8 +74,7 @@ def study(kind, args, device, data, work, lam):
     row["fp32"] = {
         "mb": frugal.size_mb(fp32),
         "latency": frugal.latency(fp32, cpu, args.runs),
-        "test": training.evaluate_model(model, data["test"], device, amp=False),
-        "sub": training.evaluate_model(model, sub, device, amp=False),
+        "test": lean(training.evaluate_model(model, data["test"], device, amp=False)),
     }
     print(kind, "fp32", row["fp32"]["latency"]["median_ms"], "ms", flush=True)
 
@@ -58,9 +83,11 @@ def study(kind, args, device, data, work, lam):
     row["int8"] = {
         "mb": frugal.size_mb(int8),
         "latency": frugal.latency(int8, cpu, args.runs),
-        "sub": score_onnx(int8, cpu, sub),
     }
     print(kind, "int8", row["int8"]["latency"]["median_ms"], "ms", flush=True)
+    seeds = range(args.noise_seeds) if model.flow else [0]
+    row["precision"] = score_precision(fp32, int8, cpu, sub, seeds)
+    print(kind, "precision scored on", len(sub.frames), "episodes", flush=True)
 
     row["pruned"] = {}
     for amount in SPARSITY:
@@ -83,7 +110,9 @@ def study(kind, args, device, data, work, lam):
         row["pruned"][f"{amount:g}"] = {
             "sparsity": round(frugal.sparsity(pruned), 4),
             "latency": frugal.latency(path, cpu, args.runs),
-            "test": training.evaluate_model(pruned, data["test"], device, amp=False),
+            "test": lean(
+                training.evaluate_model(pruned, data["test"], device, amp=False)
+            ),
             "finetune_seconds": log["seconds"],
         }
         print(
@@ -101,6 +130,9 @@ def main():
     )
     p.add_argument(
         "--sub-flow", type=int, default=100, help="test episodes for int8, flow"
+    )
+    p.add_argument(
+        "--noise-seeds", type=int, default=3, help="sampling seeds for the flow model"
     )
     p.add_argument("--ft-steps", type=int, default=600)
     p.add_argument("--ft-lr", type=float, default=3e-4)

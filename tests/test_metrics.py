@@ -132,6 +132,19 @@ def test_paired_hits_agree_with_the_summaries():
     assert 0 < sum(pairs["target"]) < n and 0 < sum(pairs["control"]) < n
 
 
+def test_event_hits_list_every_event_of_the_tables():
+    ep = sim.simulate(150, seed=2)
+    truth = torch.as_tensor(ep.frames)
+    episode, k, hit = metrics.event_hits(truth, ep)
+    total = metrics.evaluate(truth, ep)["reappearance"]["all"]
+    assert len(hit) == len(episode) == len(k) == total["n"] and hit.all()
+    static = truth.clone()
+    static[:, sim.CONTEXT :] = static[:, sim.CONTEXT - 1 : sim.CONTEXT]
+    _, _, hit = metrics.event_hits(static, ep)
+    share = metrics.evaluate(static, ep)["reappearance"]["all"]["share"]
+    assert round(hit.mean(), 4) == share and 0 < hit.sum() < len(hit)
+
+
 def test_shifted_copy_is_penalised():
     ep = sim.simulate(150, seed=2)
     shifted = torch.roll(torch.as_tensor(ep.frames), 3, dims=-1)

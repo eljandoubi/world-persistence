@@ -117,6 +117,18 @@ def summarize(error, found, k):
     return table
 
 
+def event_hits(pred, ep):
+    """Episode, run length and hit flag of every event counted in the tables.
+
+    A hit is a reappearance within RADIUS of the truth; runs with k outside LENGTHS
+    are left out, as in the summaries.
+    """
+    events = occlusion_events(ep.covered)
+    error, _ = reappearance(pred.clamp(0, 1), ep.pos, events)
+    used = np.isin(events[:, 2], LENGTHS)
+    return events[used, 0], events[used, 2], (error[used] < RADIUS).astype(int)
+
+
 def evaluate(pred, ep):
     """Persistence numbers for rolled-out frames of shape (n, LENGTH, 3, SIZE, SIZE).
 

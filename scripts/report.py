@@ -6,6 +6,8 @@ import pathlib
 
 import numpy as np
 
+from worldpersist import stats
+
 NAMES = {
     "static": "static copy",
     "a": "A memoryless",
@@ -16,6 +18,7 @@ NAMES = {
 }
 LENGTHS = ["1", "2", "3", "4", "5", "6", "all"]
 HORIZONS = ["1", "4", "8", "16"]
+REFERENCE = "b"
 
 
 def load_runs(out):
@@ -74,6 +77,91 @@ def horizons(runs, split, field, scale, digits):
             ]
             rows.append([label] + values)
     return table(["model"] + [f"h={h}" for h in HORIZONS], rows)
+
+
+def interval_text(point, draws, digits=1):
+    """A difference in points with its 95 percent interval from bootstrap draws."""
+    low, high = stats.interval(draws) * 100
+    return f"{point * 100:+.{digits}f} ({low:+.{digits}f} to {high:+.{digits}f})"
+
+
+def matched_hits(runs, split):
+    """Hits on the events that have a visible control, for every model that stored them.
+
+    Returns the episode and run length of each event and, per model, the hits of the
+    reappearing colour and of the control colour as arrays of shape (seeds, events).
+    """
+    episode = k = None
+    data = {}
+    for name in NAMES:
+        pairs = [r["metrics"][split].get("paired") for r in runs.get(name, [])]
+        if not pairs or any(p is None for p in pairs):
+            continue
+        if episode is None:
+            episode, k = np.array(pairs[0]["episode"]), np.array(pairs[0]["k"])
+        if any(p["episode"] != episode.tolist() or p["k"] != k.tolist() for p in pairs):
+            raise SystemExit(f"the runs of {name} list other events than the others")
+        data[name] = tuple(
+            np.array([p[key] for p in pairs], dtype=float)
+            for key in ("target", "control")
+        )
+    return episode, k, data
+
+
+def paired(runs, split):
+    """The reappearing colour and the visible control scored on the same events.
+
+    The gap is control minus reappearing colour. The interval comes from resampling
+    test episodes, with the seeds of a model averaged first; the spread after the
+    plus-minus sign is the standard deviation over training seeds.
+    """
+    episode, k, data = matched_hits(runs, split)
+    if not data:
+        return None
+    names = list(data)
+    mean = {n: (t.mean(axis=0), c.mean(axis=0)) for n, (t, c) in data.items()}
+    columns = np.stack([v for n in names for v in mean[n]], axis=1)
+    draws = stats.episode_bootstrap(episode, columns)
+    target = {n: (mean[n][0].mean(), draws[:, 2 * i]) for i, n in enumerate(names)}
+    control = {n: (mean[n][1].mean(), draws[:, 2 * i + 1]) for i, n in enumerate(names)}
+    gap = {
+        n: (control[n][0] - target[n][0], control[n][1] - target[n][1]) for n in names
+    }
+
+    rows = []
+    for n in names:
+        seeds = [data[n][0].mean(axis=1), data[n][1].mean(axis=1)]
+        rows.append(
+            [NAMES[n]]
+            + [cell(s, 100.0, 0) for s in seeds]
+            + [cell(seeds[1] - seeds[0], 100.0, 1), interval_text(*gap[n])]
+        )
+    first = table(
+        ["model", "reappearing colour (%)", "visible control (%)", "gap (points)"]
+        + ["gap, 95% interval"],
+        rows,
+    )
+
+    versus = []
+    for n in names:
+        if n != REFERENCE and REFERENCE in data:
+            parts = [
+                [t[n][0] - t[REFERENCE][0], t[n][1] - t[REFERENCE][1]]
+                for t in (target, control, gap)
+            ]
+            versus.append([NAMES[n]] + [interval_text(*p) for p in parts])
+    second = table(["model", "reappearing colour", "visible control", "gap"], versus)
+
+    by_k = [["events"] + [int((k == j).sum()) for j in range(1, 7)] + [len(k)]]
+    for n in names:
+        diff = data[n][1] - data[n][0]
+        cells = [
+            cell(diff[:, k == j].mean(axis=1), 100.0, 1) if (k == j).any() else "n/a"
+            for j in range(1, 7)
+        ]
+        by_k.append([NAMES[n]] + cells + [cell(diff.mean(axis=1), 100.0, 1)])
+    third = table(["model"] + [f"k={j}" for j in range(1, 7)] + ["all"], by_k)
+    return first, second, third
 
 
 def training(runs):
@@ -138,14 +226,58 @@ def penalty(out):
 
 
 def pooled(result):
-    """Share within 2 px, median error, drift and mse at h=16, over all lengths."""
-    total = result["reappearance"]["all"]
+    """Share within 2 px, median error, drift and mse at h=16, over all lengths.
+
+    A list of results, one per sampling seed, is averaged.
+    """
+    results = result if isinstance(result, list) else [result]
+    values = np.array(
+        [
+            [
+                r["reappearance"]["all"]["share"] * 100,
+                r["reappearance"]["all"]["median"],
+                r["drift_abs"]["16"] * 100,
+                r["mse"]["16"] * 1000,
+            ]
+            for r in results
+        ]
+    ).mean(axis=0)
     return [
-        f"{total['share'] * 100:.0f}",
-        f"{total['median']:.2f}",
-        f"{result['drift_abs']['16'] * 100:.1f}",
-        f"{result['mse']['16'] * 1000:.2f}",
+        f"{values[0]:.0f}",
+        f"{values[1]:.2f}",
+        f"{values[2]:.1f}",
+        f"{values[3]:.2f}",
     ]
+
+
+def precision_pairs(info):
+    """int8 against fp32 on the same events and the same noise, per model."""
+    rows = []
+    for kind, row in info["models"].items():
+        found = row["precision"]
+        fp32 = np.array(found["hits"]["fp32"], dtype=float)
+        int8 = np.array(found["hits"]["int8"], dtype=float)
+        episode = np.array(found["event"]["episode"])
+        columns = np.stack([fp32.mean(axis=0), int8.mean(axis=0)], axis=1)
+        draws = stats.episode_bootstrap(episode, columns)
+        lost = ((fp32 == 1) & (int8 == 0)).sum(axis=1).mean()
+        gained = ((fp32 == 0) & (int8 == 1)).sum(axis=1).mean()
+        rows.append(
+            [
+                NAMES[kind],
+                row["sub_episodes"],
+                fp32.shape[1],
+                len(found["seeds"]),
+                f"{fp32.mean() * 100:.1f}",
+                f"{int8.mean() * 100:.1f}",
+                interval_text(int8.mean() - fp32.mean(), draws[:, 1] - draws[:, 0]),
+                f"{lost:.1f}",
+                f"{gained:.1f}",
+            ]
+        )
+    head = ["model", "episodes", "events", "noise seeds", "fp32 share (%)"]
+    head += ["int8 share (%)", "int8 minus fp32 (points)", "lost", "gained"]
+    return table(head, rows)
 
 
 def frugal(out):
@@ -162,7 +294,9 @@ def frugal(out):
             part = row[variant]
             ms = part["latency"]["median_ms"]
             lead = [NAMES[kind], variant, part["mb"], f"{ms:.2f}", f"{ms * calls:.1f}"]
-            precision.append(lead + [row["sub_episodes"]] + pooled(part["sub"]))
+            precision.append(
+                lead + [row["sub_episodes"]] + pooled(row["precision"][variant])
+            )
         first = row["fp32"]
         ms = first["latency"]["median_ms"]
         sparse.append([NAMES[kind], 0, "none", f"{ms:.2f}"] + pooled(first["test"]))
@@ -180,6 +314,7 @@ def frugal(out):
         table(
             ["model", "sparsity (%)", "finetune steps", "ms per call"] + score, sparse
         ),
+        precision_pairs(info),
     )
 
 
@@ -195,6 +330,14 @@ def main():
         print(reappearance(runs, split, "median", 1.0, 1))
         print(f"\n### Visible control within 2 px (%), {split}\n")
         print(reappearance(runs, split, "share", 100.0, 0, key="control"))
+        same = paired(runs, split)
+        if same:
+            print(f"\n### Same events: reappearing colour and control (%), {split}\n")
+            print(same[0])
+            print(f"\n### Same events: difference from model B (points), {split}\n")
+            print(same[1])
+            print(f"\n### Same events: control minus reappearing colour, {split}\n")
+            print(same[2])
         print(f"\n### Mass drift (% of a square, absolute), {split}\n")
         print(horizons(runs, split, "drift_abs", 100.0, 1))
         print(f"\n### Mass drift (% of a square, signed), {split}\n")
@@ -213,6 +356,8 @@ def main():
         print(tables[0])
         print("\n### Frugal inference: pruning, full test set\n")
         print(tables[1])
+        print("\n### Frugal inference: int8 against fp32, same events and noise\n")
+        print(tables[2])
 
 
 if __name__ == "__main__":
