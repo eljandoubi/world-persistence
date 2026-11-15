@@ -38,7 +38,7 @@ def strip(args):
     e, c, k, r = events[0]
     first, last = max(r - k - 2, 0), min(r + 2, sim.LENGTH - 1)
     rows = {"truth": torch.as_tensor(episodes.frames)}
-    for name in NAMES:
+    for name in args.models:
         model = training.load_model(pathlib.Path(args.ckpt) / f"{name}_s0.pt", device)
         rows[NAMES[name].split()[0]] = training.predict_episodes(
             model, episodes, device
@@ -128,6 +128,7 @@ def main():
     p.add_argument("--out", default="results")
     p.add_argument("--ckpt", default="work/ckpt")
     p.add_argument("--k", type=int, default=3, help="hidden frames of the strip event")
+    p.add_argument("--models", nargs="+", default=list(NAMES), choices=list(NAMES))
     p.add_argument("--eval-episodes", type=int)
     args = p.parse_args()
     plt.switch_backend("Agg")
