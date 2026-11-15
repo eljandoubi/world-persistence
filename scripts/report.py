@@ -19,8 +19,15 @@ NAMES = {
 LENGTHS = ["1", "2", "3", "4", "5", "6", "all"]
 HORIZONS = ["1", "4", "8", "16"]
 REFERENCE = "b"
-# the weights tried before the grid was extended after a look at test shares
-FIRST_GRID = (0.1, 1.0, 10.0)
+# how each penalty weight entered the grid: the first three, then two added after
+# a look at the test shares of those
+GRID_HISTORY = {
+    0.1: "first",
+    1.0: "first",
+    10.0: "first",
+    0.01: "added",
+    0.001: "added",
+}
 
 
 def load_runs(out):
@@ -209,7 +216,7 @@ def penalty(out):
     rows = [
         [
             lam,
-            "first" if float(lam) in FIRST_GRID else "added",
+            GRID_HISTORY.get(float(lam), ""),
             f"{row['val_drift_abs'] * 100:.2f}",
             f"{row['val_share'] * 100:.0f}",
             f"{row['val_mse_16'] * 1000:.2f}",
