@@ -150,7 +150,8 @@ def paired(runs, split):
                 for t in (target, control, gap)
             ]
             versus.append([NAMES[n]] + [interval_text(*p) for p in parts])
-    second = table(["model", "reappearing colour", "visible control", "gap"], versus)
+    head = ["model", "reappearing colour", "visible control", "gap"]
+    second = table(head, versus) if versus else None
 
     by_k = [["events"] + [int((k == j).sum()) for j in range(1, 7)] + [len(k)]]
     for n in names:
@@ -254,7 +255,9 @@ def precision_pairs(info):
     """int8 against fp32 on the same events and the same noise, per model."""
     rows = []
     for kind, row in info["models"].items():
-        found = row["precision"]
+        found = row.get("precision")
+        if found is None:
+            return None
         fp32 = np.array(found["hits"]["fp32"], dtype=float)
         int8 = np.array(found["hits"]["int8"], dtype=float)
         episode = np.array(found["event"]["episode"])
@@ -294,9 +297,8 @@ def frugal(out):
             part = row[variant]
             ms = part["latency"]["median_ms"]
             lead = [NAMES[kind], variant, part["mb"], f"{ms:.2f}", f"{ms * calls:.1f}"]
-            precision.append(
-                lead + [row["sub_episodes"]] + pooled(row["precision"][variant])
-            )
+            scored = row["precision"][variant] if "precision" in row else part["sub"]
+            precision.append(lead + [row["sub_episodes"]] + pooled(scored))
         first = row["fp32"]
         ms = first["latency"]["median_ms"]
         sparse.append([NAMES[kind], 0, "none", f"{ms:.2f}"] + pooled(first["test"]))
@@ -334,8 +336,9 @@ def main():
         if same:
             print(f"\n### Same events: reappearing colour and control (%), {split}\n")
             print(same[0])
-            print(f"\n### Same events: difference from model B (points), {split}\n")
-            print(same[1])
+            if same[1]:
+                print(f"\n### Same events: difference from model B (points), {split}\n")
+                print(same[1])
             print(f"\n### Same events: control minus reappearing colour, {split}\n")
             print(same[2])
         print(f"\n### Mass drift (% of a square, absolute), {split}\n")
@@ -357,7 +360,8 @@ def main():
         print("\n### Frugal inference: pruning, full test set\n")
         print(tables[1])
         print("\n### Frugal inference: int8 against fp32, same events and noise\n")
-        print(tables[2])
+        if tables[2]:
+            print("\n### Frugal inference: int8 against fp32, same events and noise\n")
 
 
 if __name__ == "__main__":

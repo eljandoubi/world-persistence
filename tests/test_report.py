@@ -31,7 +31,7 @@ def test_the_gap_is_control_minus_reappearing_colour_on_the_same_events():
     assert row.startswith("| B history |") and f"{gap:.1f} ± 0.0" in row
     assert "to" in row.split("|")[-2]  # the interval from resampling episodes
     assert third.splitlines()[3].count("±") == 7  # six run lengths and the total
-    assert len(second.splitlines()) == 2  # only the reference model: no rows
+    assert second is None  # only the reference model: nothing to compare it with
 
 
 def test_differences_from_the_reference_model_come_with_intervals():
